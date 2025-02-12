@@ -6,6 +6,8 @@ import re  # Import regex module
 import time
 from difflib import SequenceMatcher
 import numpy as np
+from collections import OrderedDict
+
 
 # Load categories from file
 def load_categories(file_path="categories.txt"):
@@ -38,7 +40,7 @@ from difflib import SequenceMatcher
 import re
 
 def clean_text(text):
-    """Smart text deduplication: Remove duplicate words, filter noise, and merge cleaned text."""
+    """Smart text deduplication: Remove duplicate sentences while keeping original structure."""
     
     # Step 1: Split into sentences properly (handles cases like "Dr. Smith.")
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
@@ -62,10 +64,8 @@ def clean_text(text):
             filtered_sentences.append(sentence_cleaned)
             seen_sentences.add(sentence_cleaned)
 
-    # Step 3: Remove duplicate words within the final cleaned text
-    final_text = " ".join(set(" ".join(filtered_sentences).split()))
+    return ". ".join(filtered_sentences)  # ✅ Keeps original sentence structure
 
-    return final_text
 
 
 def preprocess_image(image_path):
@@ -123,11 +123,8 @@ def detect_scene_change(frame, last_frame, threshold=150):
 
     diff = cv2.absdiff(last_frame, frame)
     non_zero_count = cv2.countNonZero(cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY))
-    last_frame = frame
-
-    return non_zero_count > threshold, last_frame
-
-import time
+    
+    return non_zero_count > threshold, frame  # ✅ Correct placement
 
 def process_frame_ocr(frame):
     """Applies Hybrid OCR on a single video frame, ensuring a valid return value."""
@@ -179,10 +176,12 @@ def extract_text_from_video_parallel(video_path):
 
     cap.release()
 
-    # ✅ Remove duplicate frames before processing
-    unique_frames = list({cv2.imencode('.jpg', frame)[1].tobytes() for frame in frames_to_process})  
+    if not frames_to_process:
+        print("🚨 No valid frames detected for OCR.")
+        return "No text detected"
 
-    # ✅ Convert back to OpenCV frames for processing
+    # ✅ Keep original order while removing duplicates
+    unique_frames = list(OrderedDict.fromkeys(cv2.imencode('.jpg', frame)[1].tobytes() for frame in frames_to_process))
     frames_to_process = [cv2.imdecode(np.frombuffer(f, np.uint8), cv2.IMREAD_COLOR) for f in unique_frames]
 
     # ✅ Use multiprocessing to process OCR in parallel
@@ -228,6 +227,7 @@ if __name__ == "__main__":
     else:
         print(f"🚨 Error: Video file '{video_path}' not found.")
         video_text = ""  # Set to empty string instead of `None`
+
 
     # 🔥 Merge extracted text from both sources
     merged_text = clean_text(image_text + " " + video_text)
