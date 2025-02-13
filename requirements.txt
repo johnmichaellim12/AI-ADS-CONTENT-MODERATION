@@ -1,0 +1,9 @@
+opencv-python
+paddleocr
+numpy
+multiprocessing
+regex
+scipy
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
