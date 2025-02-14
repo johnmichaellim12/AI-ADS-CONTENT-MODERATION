@@ -1,17 +1,58 @@
-import re  # Import regex module
+import re
 from difflib import SequenceMatcher
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from textblob import TextBlob  # For sentiment analysis
-from transformers import pipeline  # For topic classification
+from textblob import TextBlob
+from transformers import pipeline, logging
+from sentence_transformers import SentenceTransformer
+from sklearn.neighbors import NearestNeighbors
+import numpy as np
 
-def load_prohibited_words(file_path="prohibited_words.txt"):
-    with open(file_path, "r", encoding="utf-8") as file:
-        words = [line.strip().lower() for line in file.readlines()]
-    return words
+logging.set_verbosity_error()
+
+# Global variables for caching
+_model = None
+_nn = None
+_categories = None
+_category_embeddings = None
+
+def setup_fast_classifier(categories):
+    # Load a smaller, faster model
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    
+    # Pre-compute embeddings for all categories
+    category_embeddings = model.encode(categories)
+    
+    # Initialize nearest neighbor search
+    nn = NearestNeighbors(n_neighbors=1, algorithm='auto')
+    nn.fit(category_embeddings)
+    
+    return model, nn, category_embeddings
+
+def get_classifier(categories):
+    global _model, _nn, _categories, _category_embeddings
+    
+    # Only initialize if categories have changed or first run
+    if _model is None or _categories != categories:
+        _model, _nn, _category_embeddings = setup_fast_classifier(categories)
+        _categories = categories.copy()
+    
+    return _model, _nn, _categories, _category_embeddings
+
+def fast_classify_topic(text, model, nn, categories, category_embeddings):
+    if not text.strip() or not categories:
+        return "Unknown"
+    
+    # Get embedding for the input text
+    text_embedding = model.encode([text])[0].reshape(1, -1)
+    
+    # Find nearest neighbor
+    distances, indices = nn.kneighbors(text_embedding)
+    
+    # Get the closest category
+    closest_idx = indices[0][0]
+    
+    return categories[closest_idx]
 
 def clean_text(text):
-    """Cleans text by removing special characters, punctuation, and excessive spaces."""
     text = text.lower()
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'\b(?:https?|ftp):\/\/\S+', '', text)
@@ -19,54 +60,58 @@ def clean_text(text):
     return text.strip()
 
 def deduplicate_text(text):
-    """Removes duplicate sentences while keeping original structure."""
-    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s+', text)
+    sentences = re.split(r'(?<=\.|\?|!)\s+', text)
     filtered_sentences = []
     seen_sentences = set()
-
     for sentence in sentences:
         sentence_cleaned = " ".join(sentence.split())
-        if not sentence_cleaned:
-            continue
-        is_duplicate = any(
-            SequenceMatcher(None, sentence_cleaned, seen).ratio() > 0.85 for seen in seen_sentences
-        )
-        if not is_duplicate:
+        if sentence_cleaned and sentence_cleaned not in seen_sentences:
             filtered_sentences.append(sentence_cleaned)
             seen_sentences.add(sentence_cleaned)
     return ". ".join(filtered_sentences)
 
 def filter_prohibited_words(text, prohibited_words):
-    """Detects if the extracted text contains prohibited words, ignoring case and punctuation."""
-    # Clean and tokenize text
     text_tokens = set(re.findall(r'\b\w+\b', text.lower()))
-    flagged_words = [word for word in prohibited_words if word.lower() in text_tokens]
-    return flagged_words if flagged_words else []
-
-def text_similarity(text1, text2):
-    """Computes similarity between two texts using TF-IDF + Cosine Similarity."""
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform([text1, text2])
-    similarity_score = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])
-    return similarity_score[0][0]
+    return [word for word in prohibited_words if word.lower() in text_tokens]
 
 def analyze_sentiment(text):
-    """Performs sentiment analysis on the text using TextBlob."""
     return TextBlob(text).sentiment.polarity
 
 def classify_topic(text, candidate_labels):
-    """Classifies the text topic using HuggingFace Transformers zero-shot classification."""
-    classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
-    result = classifier(text, candidate_labels)
-    return result['labels'][0]
+    if not candidate_labels:
+        return "Unknown"
+    if len(text.strip()) < 10:  # Avoid classifying very short texts
+        return "Text too short for classification"
+    
+    try:
+        model, nn, categories, category_embeddings = get_classifier(candidate_labels)
+        return fast_classify_topic(text, model, nn, categories, category_embeddings)
+    except Exception as e:
+        print(f"Error during topic classification: {e}")
+        import traceback
+        traceback.print_exc()
+        return "Classification Error"
 
 def nlp_pipeline(text, prohibited_words, candidate_labels):
-    """Full NLP pipeline that cleans text, checks for prohibited words, analyzes sentiment, and classifies topic."""
+    if not text.strip():
+        raise ValueError("Input text is empty.")
+    
+    print("Cleaning text...")
     cleaned_text = clean_text(text)
+    print("Deduplicating text...")
     cleaned_text = deduplicate_text(cleaned_text)
+    print("Filtering prohibited words...")
     flagged_words = filter_prohibited_words(cleaned_text, prohibited_words)
+    print("Analyzing sentiment...")
     sentiment = analyze_sentiment(cleaned_text)
-    topic = classify_topic(cleaned_text, candidate_labels)
+    
+    print("Initializing fast classifier...")
+    model, nn, category_embeddings = setup_fast_classifier(candidate_labels)
+    
+    print("Classifying topic...")
+    topic = fast_classify_topic(cleaned_text, model, nn, candidate_labels, category_embeddings)
+    
+    print("NLP pipeline completed.")
     return {
         'cleaned_text': cleaned_text,
         'flagged_words': flagged_words,

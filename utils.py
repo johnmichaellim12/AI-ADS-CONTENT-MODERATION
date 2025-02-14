@@ -1,9 +1,24 @@
 import re  # Import regex module
+import logging
+
+def load_prohibited_words(file_path="prohibited_words.txt"):
+    with open(file_path, "r", encoding="utf-8") as file:
+        words = [line.strip().lower() for line in file.readlines()]
+    return words
 
 # Load categories from file
 def load_categories(file_path="categories.txt"):
-    with open(file_path, "r", encoding="utf-8") as file:
-        return [line.strip() for line in file.readlines()]
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            categories = [line.strip() for line in file.readlines() if line.strip()]
+        if not categories:
+            # Fallback to default categories if file is empty
+            categories = ["General", "Retail", "Technology", "Other"]
+            logging.warning("Using default categories as categories.txt was empty")
+        return categories
+    except FileNotFoundError:
+        logging.error(f"Categories file not found: {file_path}")
+        return ["General", "Retail", "Technology", "Other"]  # Return defaults
 
 # Match detected text with category
 def match_category(store_category, ad_text, categories):
