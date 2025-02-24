@@ -1,6 +1,6 @@
 import os
 import logging
-from ocr_module import extract_text_from_image, extract_text_from_video_parallel
+from ocr_module import process_image, process_video
 from topic_classifier import load_keywords, ensemble_classification
 from text_filter import nlp_pipeline
 from utils import load_categories, load_prohibited_words, match_category
@@ -26,14 +26,15 @@ def run_moderation():
         logging.error("No categories found. Please check categories.txt")
         return
 
-    image_text = extract_text_from_image(image_path) if os.path.exists(image_path) else ""
-    video_text = extract_text_from_video_parallel(video_path) if os.path.exists(video_path) else ""
+    image_data = process_image(image_path) if os.path.exists(image_path) else {"text": "", "objects": []}
+    video_data = process_video(video_path) if os.path.exists(video_path) else {"text": "", "objects": []}
 
-    if not image_text and not video_text:
-        logging.error("No text extracted from image or video.")
+    combined_text = image_data["text"] + " " + video_data["text"]
+    detected_objects = set(image_data["objects"] + video_data["objects"])
+
+    if not combined_text and not detected_objects:
+        logging.error("No text or objects detected in image or video.")
         return
-
-    combined_text = image_text + " " + video_text
 
     try:
         # **Fix Topic Classification**
@@ -57,6 +58,10 @@ def run_moderation():
         category_match = match_category(store_category, nlp_result['cleaned_text'], categories)
         print(f"\n=== Category Matching Result ===")
         print(category_match)
+
+        # Display detected objects
+        print(f"\n=== Object Detection Results ===")
+        print(f"Detected Objects: {', '.join(detected_objects) if detected_objects else 'None'}")
 
     except ValueError as e:
         logging.error(f"Error in NLP pipeline: {e}")
