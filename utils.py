@@ -12,13 +12,14 @@ def load_categories(file_path="categories.txt"):
         with open(file_path, "r", encoding="utf-8") as file:
             categories = [line.strip() for line in file.readlines() if line.strip()]
         if not categories:
-            # Fallback to default categories if file is empty
             categories = ["General", "Retail", "Technology", "Other"]
             logging.warning("Using default categories as categories.txt was empty")
+        print(f"📂 Loaded Categories: {categories}")  # Debugging Output
         return categories
     except FileNotFoundError:
         logging.error(f"Categories file not found: {file_path}")
-        return ["General", "Retail", "Technology", "Other"]  # Return defaults
+        return ["General", "Retail", "Technology", "Other"]
+
 
 # Match detected text with category
 def match_category(store_category, ad_text, categories):

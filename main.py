@@ -30,7 +30,9 @@ def run_moderation():
     video_data = process_video(video_path) if os.path.exists(video_path) else {"text": "", "objects": []}
 
     combined_text = image_data["text"] + " " + video_data["text"]
-    detected_objects = set(image_data["objects"] + video_data["objects"])
+    detected_objects = image_data["objects"] + video_data["objects"]
+
+
 
     if not combined_text and not detected_objects:
         logging.error("No text or objects detected in image or video.")
@@ -56,12 +58,32 @@ def run_moderation():
         print(f"Text Length After Cleaning: {len(nlp_result['cleaned_text'])} characters")
 
         category_match = match_category(store_category, nlp_result['cleaned_text'], categories)
+
+        print("\n=== 🚦 Moderation Decision ===")
+
+        # Example moderation rules (you can customize these)
+        restricted_objects = ["Weapon", "Handgun", "Violence", "Nudity"]
+        flagged_objects = [obj for obj in detected_objects if obj["label"] in restricted_objects and obj["confidence"] > 0.60]
+
+
+        if flagged_objects:
+            print("❌ Ad Rejected: Contains Restricted Content!")
+            print("🚫 Flagged Objects:")
+            for obj in flagged_objects:
+                print(f"- {obj['label']} (Confidence: {obj['confidence']:.2f})")
+        else:
+            print("✅ Ad Approved: No restricted objects detected.")
+
         print(f"\n=== Category Matching Result ===")
         print(category_match)
 
-        # Display detected objects
-        print(f"\n=== Object Detection Results ===")
-        print(f"Detected Objects: {', '.join(detected_objects) if detected_objects else 'None'}")
+        print("\n=== 🖼️ Object Detection Results ===")
+        if detected_objects:
+            for obj in detected_objects:
+                print(f"- {obj['label']} (Confidence: {obj['confidence']:.2f}) - BBox: {obj['bbox']}")
+        else:
+            print("No objects detected.")
+
 
     except ValueError as e:
         logging.error(f"Error in NLP pipeline: {e}")

@@ -1,0 +1,5 @@
+train: C:/Users/NCTV_User_002/Desktop/pagsulay/dataset/images/train
+val: C:/Users/NCTV_User_002/Desktop/pagsulay/dataset/images/val
+
+nc: 2 # Number of classes
+names: ["Handgun", "Weapon"] # Class names

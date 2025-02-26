@@ -54,10 +54,15 @@ def fast_classify_topic(text, model, nn, categories, category_embeddings):
 
 def clean_text(text):
     text = text.lower()
-    text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'\b(?:https?|ftp):\/\/\S+', '', text)
-    text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r'\s+', ' ', text)  # Normalize spaces
+    text = re.sub(r'\b(?:https?|ftp):\/\/\S+', '', text)  # Remove URLs
+    text = re.sub(r'[^a-zA-Z0-9\s-]', '', text)  # 🔥 Keep hyphens for words like "semi-automatic"
+    
+    print(f"🧼 Fixed Cleaned Text: {text}")  # 🔍 Debugging Output
     return text.strip()
+
+
+
 
 def deduplicate_text(text):
     sentences = re.split(r'(?<=\.|\?|!)\s+', text)
